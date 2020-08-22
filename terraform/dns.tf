@@ -13,7 +13,11 @@ resource "aws_route53_record" "manager" {
 resource "aws_route53_record" "nextcloud" {
   zone_id = data.aws_route53_zone.iaclab.zone_id
   name    = "sync.${data.aws_route53_zone.iaclab.name}"
-  type    = "CNAME"
-  ttl     = "300"
-  records = ["proxy.${data.aws_route53_zone.iaclab.name}"]
+  type    = "A"
+
+  alias {
+    name                   = aws_elb.elb.dns_name
+    zone_id                = aws_elb.elb.zone_id
+    evaluate_target_health = true
+  }
 }
