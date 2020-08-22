@@ -31,6 +31,35 @@
 
   tasks:
 
+  - name: Install NFS Packages
+    package:
+      name: 
+        - nfs-utils
+
+  - name: Ensure NFS starts at boot
+    systemd: 
+      name: nfs-server 
+      state: started 
+      enabled: true
+      
+  - name: Create Data Directory
+    file:
+      path: /shared/data/{{ item }}
+      state: directory
+    with_items:
+      - nextcloud
+      - db
+
+  - name: Configure NFS Shares
+    lineinfile:
+      path: /etc/exports
+      line: '/shared/data/{{ item }}  *(rw,no_root_squash)'
+      state: present
+    with_items:
+      - nextcloud
+      - db
+    notify: Restart NFS
+
   - name: Initialize Swarm
     docker_swarm:
       state: present
@@ -41,6 +70,13 @@
       worker_token: "{{ docker.swarm_facts.JoinTokens.Worker }}"
       swarm_manager: "{{ ansible_eth0.ipv4.address }}"
       cacheable: yes
+
+  handlers:
+
+  - name: Restart NFS
+    systemd: 
+      name: nfs-server 
+      state: restarted
 
 - hosts: tag_group_nodes
   become: true
@@ -54,4 +90,3 @@
       join_token: "{{ hostvars[item]['worker_token'] }}"
       remote_addrs: "{{ hostvars[item]['swarm_manager'] }}:2377"
     with_items: "{{ groups['tag_Name_manager'] }}"
-
