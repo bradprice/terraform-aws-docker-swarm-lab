@@ -1,0 +1,18 @@
+---
+  - hosts: tag_Name_manager
+    become: true
+  
+    tasks:
+
+    - name: Copy Docker Compose file 
+      copy:
+        src: docker-compose.yml
+        dest: /srv/docker-compose.yml
+        mode: '0644'
+
+    - name: Deploy stack from a compose file
+      docker_stack:
+        state: present
+        name: nextcloud
+        compose:
+          - /srv/docker-compose.yml

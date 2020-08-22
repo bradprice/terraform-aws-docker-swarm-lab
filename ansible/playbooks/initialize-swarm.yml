@@ -1,0 +1,57 @@
+---
+- hosts: tag_type_docker
+  become: true
+
+  tasks:
+
+  - name: Install Docker
+    package:
+      name:
+        - docker
+
+  - name: Enable/Start the Docker service
+    systemd:
+      name: docker
+      enabled: yes
+      state: started
+
+  - name: Install PIP
+    yum:
+      name:
+        - python-pip
+
+  - name: Install required python modules
+    pip:
+      name: 
+        - docker
+        - jsondiff
+
+- hosts: tag_Name_manager
+  become: true
+
+  tasks:
+
+  - name: Initialize Swarm
+    docker_swarm:
+      state: present
+      advertise_addr: "{{ ansible_eth0.ipv4.address  }}"
+    register: docker
+
+  - set_fact:
+      worker_token: "{{ docker.swarm_facts.JoinTokens.Worker }}"
+      swarm_manager: "{{ ansible_eth0.ipv4.address }}"
+      cacheable: yes
+
+- hosts: tag_group_nodes
+  become: true
+
+  tasks:
+
+  - name: Add nodes
+    docker_swarm:
+      state: join
+      advertise_addr: "{{ ansible_eth0.ipv4.address  }}"
+      join_token: "{{ hostvars[item]['worker_token'] }}"
+      remote_addrs: "{{ hostvars[item]['swarm_manager'] }}:2377"
+    with_items: "{{ groups['tag_Name_manager'] }}"
+

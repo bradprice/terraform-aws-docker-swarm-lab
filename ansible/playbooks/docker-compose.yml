@@ -1,0 +1,115 @@
+version: "3.8"
+
+services:
+
+  proxy:
+    image: "bradprice/nextcloud-proxy"
+    ports:
+      - "80:80"
+      - "8080:8080"
+    command:
+      - --api.insecure=true
+      - --api.dashboard=true
+      - --log.level=DEBUG
+      - --providers.docker.swarmmode=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=proxy
+      - --entrypoints.web.address=:80
+    networks:
+      - external
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - "traefik.http.middlewares.dashboard.ipwhitelist.sourcerange=24.254.225.187,127.0.0.1"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+
+  web:
+    image: "bradprice/nextcloud-web"
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=external"
+        - "traefik.http.services.nextcloud.loadbalancer.server.port=80"
+        - "traefik.http.routers.nextcloud.rule=Host(`sync.iaclab.net`)"
+        - "traefik.http.routers.nextcloud.entrypoints=web"
+        - "traefik.http.routers.nextcloud.middlewares=nextcloud-svc-discovery"
+        - "traefik.http.middlewares.nextcloud-svc-discovery.redirectregex.permanent=true"
+        - "traefik.http.middlewares.nextcloud-svc-discovery.redirectregex.regex=^http://(.*)/.well-known/(card|cal)dav"
+        - "traefik.http.middlewares.nextcloud-svc-discovery.redirectregex.replacement=http://$${1}/remote.php/dav/" 
+#      mode: global
+      placement:
+        constraints:
+          - 'node.hostname == swarm-node-1'
+    volumes:
+      - nextcloud-nfs:/var/www/html
+    networks:
+      - external
+      - web
+    depends_on:
+      - app
+
+  app:
+    image: "bradprice/nextcloud-app"
+    deploy:
+      placement:
+        constraints:
+          - 'node.hostname == swarm-node-1'
+    volumes:
+      - nextcloud-nfs:/var/www/html
+    networks:
+      - web
+      - db
+      - redis
+    depends_on:
+      - db 
+
+  db:
+    image: mariadb:10.5.4
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
+    volumes:
+      - db-nfs:/var/lib/mysql
+    networks:
+      - db
+    environment:
+      - MYSQL_ROOT_PASSWORD=r00tr00t
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_PASSWORD=nextcloudpw
+
+  redis:
+    image: "bradprice/nextcloud-redis"
+    networks:
+      - redis
+
+volumes:
+  nextcloud-nfs:
+    driver: local
+    driver_opts:
+      type: nfs4
+      o: addr=172.16.25.100
+      device: ":/shared/data/nextcloud"
+    name: nextcloud
+  db-nfs:
+    driver: local
+    driver_opts:
+      type: nfs4
+      o: addr=172.16.25.100
+      device: ":/shared/data/db"
+    name: db
+  nextcloud:
+  db:
+  
+
+
+networks:
+  external:
+    name: external
+  web:
+    name: web
+  db:
+    name: db
+  redis:
+    name: redis

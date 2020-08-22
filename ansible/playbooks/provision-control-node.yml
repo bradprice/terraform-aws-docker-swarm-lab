@@ -1,0 +1,171 @@
+---
+  - hosts: all
+    become: true
+  
+    vars:
+      install_dir: "/usr/local/bin"
+      compose_version: 1.26.2
+      terraform_version: "0.13.0"
+      awscli_version: "2.0.42"
+
+    tasks:
+
+      - name: Install Docker
+        yum:
+          enablerepo: ol7_addons
+          name: docker-engine
+    
+      - name: Enable/Start the Docker service
+        systemd:
+          name: docker
+          enabled: yes
+          state: started
+ 
+      - name: Test if Docker Compose is installed
+        stat: 
+          path: "{{ install_dir }}/docker-compose"
+        register: compose
+        #changed_when: false
+      
+      - name: Get version of Docker Compose
+        shell: "{{ install_dir }}/docker-compose --version | awk '{print $3}' | cut -d, -f1"
+        register: compose_ver
+        when: compose.stat.exists == True
+        changed_when: false          
+
+      - name: Download and Install Docker Compose  [ {{ compose_version }} ]
+        get_url:
+          url: https://github.com/docker/compose/releases/download/{{ compose_version }}/docker-compose-{{ ansible_system }}-{{ ansible_architecture }}
+          dest: "{{ install_dir }}"
+          remote_src: "yes"
+          owner: root
+          group: root      
+
+      - name: Test if Terraform is installed
+        stat: 
+          path: "{{ install_dir }}/terraform"
+        register: terraform
+        #changed_when: false
+      
+      - name: Get version of Terraform
+        shell: "{{ install_dir }}/terraform version | awk '{ print $2}' | cut -dv -f2"
+        register: terraform_ver
+        when: terraform.stat.exists == True
+        changed_when: false
+      
+      - debug:
+          msg: Terraform Version is [ {{ terraform_ver.stdout }} ]
+        when: terraform.stat.exists == True
+
+      - name: Install Terraform
+        block:
+
+          - name: Download and Install Terraform [{{ terraform_version }}]
+            unarchive:
+              src: https://releases.hashicorp.com/terraform/{{ terraform_version }}/terraform_{{ terraform_version }}_linux_amd64.zip
+              dest: "{{ install_dir }}"
+              remote_src: yes
+              owner: root
+              group: root
+
+          - name: Create a symbolic link for Terraform
+            file:
+              src: "{{ install_dir }}/terraform"
+              dest: "/usr/bin/terraform"
+              state: link
+              
+        when: terraform.stat.exists == False or terraform_ver.stdout != terraform_version
+
+
+      - name: Test if AWS CLI is installed
+        stat: 
+          path: "/usr/bin/aws"
+        register: awscli
+        #changed_when: false
+
+      - name: Get version of AWS CLI
+        shell: /usr/bin/aws --version | awk '{print $1}' | cut -d/ -f2
+        register: awscli_ver
+        when: awscli.stat.exists == True
+        changed_when: false
+      
+      - debug:
+          msg: AWS CLI Version is [ {{ awscli_ver.stdout }} ]
+        when: awscli.stat.exists == True
+
+      - name: Install AWS CLI
+        block:
+
+          - name: Create Temporary Directory
+            tempfile:
+              path: /var/tmp
+              state: directory
+            register: tempdir
+          
+          - name: Download AWS CLI
+            unarchive:
+              src: https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
+              dest: "{{ tempdir.path }}"
+              remote_src: yes
+              owner: root
+              group: root
+
+          - name: Install AWS CLI
+            command: "{{ tempdir.path }}/aws/install -b /usr/bin" 
+            args:
+              creates: /usr/local/aws-cli/v2/current/bin/aws
+
+          - name: Install PIP
+            yum:
+              name: python-pip
+
+          - name: Install required python modules
+            pip:
+              name: boto
+
+        when: awscli.stat.exists == False or awscli_ver.stdout != awscli_version
+
+      - name: Configure AWS CLI
+        block:
+
+          - name: Create Config Directory
+            file:
+              path: /home/vagrant/.aws
+              state: directory
+
+          - name: Configure credentials
+            ini_file:
+              path: /home/vagrant/.aws/credentials
+              section: default
+              option: "{{ item.option }}"
+              value: "{{ item.value }}"
+            with_items:
+              - { option: aws_access_key_id, value: "{{ lookup('file', '.aws_access_key_id') }}" }
+              - { option: aws_secret_access_key, value: "{{ lookup('file', '.aws_secret_access_key') }}" }
+
+          - name: Configure Region
+            ini_file:
+              path: /home/vagrant/.aws/config
+              section: default
+              option: region
+              value: us-east-1
+        
+      - name: Generate SSH key pair
+        openssh_keypair:
+          path: /home/vagrant/.ssh/id_rsa
+          size: 2048
+          owner: vagrant
+          group: vagrant
+
+      - name: Copy SSH key pair 
+        copy:
+          src: "{{ item }}"
+          dest: /vagrant/
+        with_items:
+          - /home/vagrant/.ssh/id_rsa
+          - /home/vagrant/.ssh/id_rsa.pub
+      
+      - name: Copy ec2.ini 
+        copy:
+          src: ../ec2.ini
+          dest: /etc/ansible/ec2.ini

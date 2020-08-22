@@ -1,0 +1,41 @@
+---
+- hosts: tag_Name_manager
+  become: true
+
+  tasks:
+  
+  - name: Install NFS Packages
+    package:
+      name: 
+        - nfs-utils
+
+  - name: Ensure NFS starts at boot
+    systemd: 
+      name: nfs-server 
+      state: started 
+      enabled: true
+      
+  - name: Create Data Directory
+    file:
+      path: /shared/data/{{ item }}
+      state: directory
+    with_items:
+      - nextcloud
+      - db
+
+  - name: Configure NFS Shares
+    lineinfile:
+      path: /etc/exports
+      line: '/shared/data/{{ item }}  *(rw,no_root_squash)'
+      state: present
+    with_items:
+      - nextcloud
+      - db
+    notify: Restart NFS
+
+  handlers:
+
+  - name: Restart NFS
+    systemd: 
+      name: nfs-server 
+      state: restarted

@@ -1,0 +1,26 @@
+version: '3.8'
+services:
+
+  proxy:
+    image: "bradprice/nextcloud-proxy"
+    build:
+      context: proxy
+      dockerfile: Dockerfile
+
+  web:
+    image: "bradprice/nextcloud-web"
+    build:
+      context: web
+      dockerfile: Dockerfile    
+
+  app:
+    image: "bradprice/nextcloud-app"
+    build:
+      context: nextcloud
+      dockerfile: Dockerfile
+
+  redis:
+    image: "bradprice/nextcloud-redis"
+    build:
+      context: redis
+      dockerfile: Dockerfile
