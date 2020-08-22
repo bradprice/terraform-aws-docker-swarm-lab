@@ -168,3 +168,9 @@ resource "aws_elb" "elb" {
     lb_protocol       = "http"
   }
 }
+
+resource "aws_elb_attachment" "elb" {
+  count    = var.instance_count
+  elb      = aws_elb.elb.id
+  instance = element(aws_instance.workers.*.id, count.index)
+}
