@@ -161,6 +161,7 @@
         copy:
           src: "{{ item }}"
           dest: /vagrant/
+          mode: 0600
         with_items:
           - /home/vagrant/.ssh/id_rsa
           - /home/vagrant/.ssh/id_rsa.pub
