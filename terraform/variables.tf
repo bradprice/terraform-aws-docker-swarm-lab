@@ -19,7 +19,7 @@ variable "private_key_path" {
 }
 
 variable "instance_count" {
-  default = "2"
+  default = "1"
 }
 
 variable "manager_ip" {
